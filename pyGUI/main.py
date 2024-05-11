@@ -4,9 +4,13 @@ import time
 
 applicationClose = False
 serialStringIn = ""
-newDataAvaialble = False
+newDataAvailable = False
 previous_time = time.time()
 previous_data_index = 0
+current_frequency = 0
+period_ms = 0
+duty_cycle = 0
+
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GREEN = (0, 255, 0)
@@ -18,7 +22,8 @@ timeBase = 100
 
 pygame.init()
 pygame.font.init()
-myfont = pygame.font.SysFont('monospace', 12)
+myfont = pygame.font.SysFont('monospace', 13)
+
 # Create main window
 size = (700, 500)
 screen = pygame.display.set_mode(size)
@@ -27,6 +32,33 @@ pygame.display.set_caption("ArduinoScope")
 # Serial port setup
 serialPort = serial.Serial('/dev/ttyACM1', 115200)
 
+
+def calculate_period(frequency):
+    if frequency != 0:
+        return (1.0 / frequency) * 1000
+    else:
+        return 0
+    
+def calculate_frequency():
+    global previous_time, previous_data_index
+    current_time = time.time()
+    time_span = current_time - previous_time
+    num_data_points = 99  # Assuming 99 data points
+    if num_data_points > 0 and time_span > 0:
+        frequency = 1 / (time_span / num_data_points)
+    else:
+        frequency = 0
+    previous_time = current_time
+    previous_data_index = num_data_points
+    return frequency
+
+
+def calculate_duty_cycle(data):
+    threshold = 127  # Assuming halfway between the high and low values
+    high_count = sum(1 for value in data if value > threshold)
+    total_samples = len(data)
+    duty_cycle = (high_count / total_samples) * 100
+    return duty_cycle
 
 while not applicationClose:
     for event in pygame.event.get():
@@ -45,20 +77,8 @@ while not applicationClose:
                 time.sleep(0.00001)
 
             data = serialPort.read(100)
-            newDataAvaialble = True
+            newDataAvailable = True
             serialPort.write(b'K')
-
-            # Calculate frequency
-            current_time = time.time()
-            time_span = current_time - previous_time
-            num_data_points = 99  # Assuming 99 data points
-            if num_data_points > 0 and time_span > 0:
-                frequency = 1 / (time_span / num_data_points)
-            else:
-                frequency = 0
-
-            previous_time = current_time
-            previous_data_index += 99
 
             # Calculate average voltage
             average = sum(data) / len(data)
@@ -72,16 +92,18 @@ while not applicationClose:
                 if data[i] < min_value:
                     min_value = data[i]
 
-                    
-        serialPort.reset_input_buffer()
+            # Calculate frequncy, period and duty cycle
+            current_frequency = calculate_frequency()
+            period_ms = calculate_period(current_frequency)
+            duty_cycle = calculate_duty_cycle(data)
 
-
-    if newDataAvaialble:
+    if newDataAvailable:
         screen.fill(BLACK)
 
         for i in range(0, 99):
             if i < 99:
-                pygame.draw.line(screen, RED, [40 + (i * 4), 400 - data[i]], [40 + ((i + 1) * 4), 400 - data[i + 1]], 2)
+                pygame.draw.line(screen, RED, [40 + (i * 4), 400 - data[i]], [40 + ((i + 1) * 4), 400 - data[i + 1]],
+                                 2)
 
         # Average line
         pygame.draw.line(screen, BLUE, [40, 400 - average], [500, 400 - average], 1)
@@ -102,11 +124,7 @@ while not applicationClose:
         label_time75 = myfont.render(str(timeBase * 75) + timeUnit, False, WHITE)
         label_time100 = myfont.render(str(timeBase * 100) + timeUnit, False, WHITE)
 
-        # Print frequency at the top of the GUI
-        label_frequency = myfont.render("Frequency: {:.2f} Hz".format(frequency), False, WHITE)
-        screen.blit(label_frequency, (10, 10))
-
-        # Print average value and voltage line
+        # print average value and voltage line
         averageV = (average / 255) * 5
         averageV = round(averageV, 2)
         label_average = myfont.render(str(averageV) + 'V', False, BLUE)
@@ -134,8 +152,15 @@ while not applicationClose:
         screen.blit(label_time75, (40 + 280, 410))
         screen.blit(label_time100, (40 + 360, 410))
 
-        newDataAvaialble = False
+        # Print frequency, period, and duty cycle
+        label_frequency = myfont.render("Frequency: {:.2f} Hz".format(current_frequency), False, WHITE)
+        label_period = myfont.render("Period: {:.2f} ms".format(period_ms), False, WHITE)
+        label_duty_cycle = myfont.render("Duty Cycle: {:.2f}%".format(duty_cycle), False, WHITE)
+
+        screen.blit(label_frequency, (10, 10))
+        screen.blit(label_period, (10, 25))
+        screen.blit(label_duty_cycle, (10, 40))
+
+        newDataAvailable = False
         pygame.display.flip()
-
-
 
