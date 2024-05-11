@@ -1,0 +1,111 @@
+# import matplotlib
+# import serial
+# import matplotlib.pyplot as plt
+# import time
+#
+# matplotlib.use('TkAgg')
+#
+# # Open serial connection to Arduino
+# ser = serial.Serial('/dev/ttyUSB0', 2000000)
+#
+# # Initialize lists to store data and time
+# max_data_size = 200  # Maximum number of data points
+# data = []
+# timestamps = []
+#
+# # Plot the initial empty graph
+# fig, ax = plt.subplots(figsize=(10, 5))
+# plotline, = ax.plot(timestamps, data)  # Use timestamps as x-values
+# ax.set_xlabel('Time (milliseconds)')
+# ax.set_ylabel('Analog Value')
+# ax.set_title('Arduino Oscilloscope')
+#
+# # Read data from Arduino
+# ser.write(b'B100\n')
+#
+# # Initialize time
+# start_time = time.time()
+#
+# # Define the time range (0 to 500 milliseconds)
+# time_range = 500000  # milliseconds
+# max_time = time_range * 1e-3  # Convert milliseconds to seconds
+#
+# while True:
+#     line = ser.readline().decode('utf-8').strip()
+#     if line == "END":
+#         print('End of burst')
+#         ser.write(b'B100\n')
+#     if line.isdigit():
+#         # Append new data point
+#         data.append(int(line))
+#
+#         # Calculate elapsed time in milliseconds
+#         elapsed_time = (time.time() - start_time) * 1e3  # Convert seconds to milliseconds
+#         timestamps.append(elapsed_time)
+#
+#         # If data exceeds max size, remove oldest data points
+#         if len(data) > max_data_size:
+#             data.pop(0)
+#             timestamps.pop(0)
+#
+#         # Update the plot with new data
+#         plotline.set_xdata(timestamps)
+#         plotline.set_ydata(data)
+#         ax.relim()
+#         ax.autoscale_view(scaley=True)
+#
+#         # Set the x-axis limits to the predefined time range (0 to 500 milliseconds)
+#         ax.set_xlim(0, max_time)
+#
+#         # Pause to allow time for the plot to update
+#         plt.pause(0.01)
+#
+# # Close serial connection
+# ser.close()
+#
+# plt.show()
+
+import time
+import matplotlib
+import matplotlib.pyplot as plt
+import serial
+from drawnow import *
+matplotlib.use('TkAgg')
+
+duty_cycle_values = []
+time_values = []
+frequency = 0
+period = 0
+duty_cycle = 0
+
+# Create the serial port object
+port = serial.Serial('/dev/ttyACM1', 9600, timeout=0.5)
+plt.ion()
+
+# Create the figure function
+def make_fig():
+    plt.ylim(0, 100)
+    plt.title('PWM Signal')
+    plt.grid(True)
+    plt.xlabel('Time (s)')
+    plt.ylabel('Duty Cycle (%)')
+    plt.plot(time_values, duty_cycle_values, 'b-', label='PWM Signal')
+    plt.legend(loc='upper right')
+
+while True:
+    if port.in_waiting > 0:
+        data = port.readline().decode('utf-8').strip().split(',')
+        if len(data) == 3:
+            period = float(data[0]) / 1000000  # Convert period from microseconds to seconds
+            frequency = float(data[1])
+            duty_cycle = float(data[2])
+
+            print('Period: {} s, Frequency: {} Hz, Duty Cycle: {}%'.format(period, frequency, duty_cycle))
+
+            duty_cycle_values.append(duty_cycle)
+            time_values.append(sum(time_values) + period)  # Incremental time values
+            drawnow(make_fig)
+
+    if len(duty_cycle_values) > 50:
+        duty_cycle_values.pop(0)
+        time_values.pop(0)
